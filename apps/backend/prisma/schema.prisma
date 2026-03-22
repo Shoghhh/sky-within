@@ -1,0 +1,111 @@
+// Sky Within - Astrology Daily Advice App
+// Prisma Schema for PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  password    String
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  birthDate      DateTime
+  birthTime      String   // "14:30" format
+  birthPlace     String
+  birthLatitude  Float?   // For natal chart calculation
+  birthLongitude Float?   // For natal chart calculation
+
+  natalChart  NatalChart?
+  preferences Json?    // { theme, language, notifications }
+  fcmToken    String?  // For push notifications
+
+  dailyMessages DailyMessage[]
+  journalEntries JournalEntry[]
+  authToken     AuthToken?
+}
+
+model NatalChart {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  sun       Float
+  moon      Float
+  ascendant Float
+  mercury   Float?
+  venus     Float?
+  mars      Float?
+  jupiter   Float?
+  saturn    Float?
+  uranus    Float?
+  neptune   Float?
+  pluto     Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DailyMessage {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date        DateTime @db.Date
+
+  message     String
+  dominantLayer String
+  intensity   String
+  adviceType  String
+  tone        String
+
+  ruleResult  Json?    // Full RuleResult for reference
+  transitData Json?    // Transit array for reference
+
+  createdAt   DateTime @default(now())
+  sentAt      DateTime? // When notification was sent
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+}
+
+model AuthToken {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model EphemerisCache {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date @unique
+  positions Json     // { sun, moon, mars, venus, ... }
+  createdAt DateTime @default(now())
+}
+
+model JournalEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime @db.Date
+
+  text      String   @db.Text
+  mood      String?  // happy, calm, reflective, stressed, sad
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+}

@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "plugins": [
+      "expo-dev-client"
+    ],
+    "name": "sky-within-app",
+    "slug": "sky-within-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F0E17"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.shogh.sky-within-app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.shogh.skywithinapp"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

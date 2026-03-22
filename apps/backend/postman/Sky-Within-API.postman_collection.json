@@ -1,0 +1,251 @@
+{
+  "info": {
+    "name": "Sky Within API",
+    "description": "Collection for testing Sky Within astrology daily advice backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api" },
+    { "key": "accessToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health",
+            "description": "Check API health status"
+          }
+        },
+        {
+          "name": "Root",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}",
+            "description": "Get API info"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    if (json.access_token) {",
+                  "        pm.collectionVariables.set('accessToken', json.access_token);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"shoghik@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Login and get JWT token. Token is auto-saved to collection variable."
+          }
+        }
+      ]
+    },
+    {
+      "name": "User",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"shoghik@example.com\",\n  \"password\": \"password123\",\n  \"name\": \"Shoghik\",\n  \"birthDate\": \"1998-06-15\",\n  \"birthTime\": \"14:30\",\n  \"birthPlace\": \"Yerevan, Armenia\",\n  \"birthLatitude\": 40.1811,\n  \"birthLongitude\": 44.5136,\n  \"preferences\": {\n    \"theme\": \"light\",\n    \"language\": \"en\",\n    \"notifications\": {\n      \"enabled\": true,\n      \"time\": \"08:00\",\n      \"type\": \"daily_tip\"\n    }\n  }\n}"
+            },
+            "url": "{{baseUrl}}/user/register",
+            "description": "Register new user. birthLatitude and birthLongitude optional (for ascendant calc)."
+          }
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/user/profile",
+            "description": "Get user profile (requires JWT)"
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Shoghik\",\n  \"preferences\": {\n    \"theme\": \"dark\",\n    \"language\": \"en\",\n    \"notifications\": {\n      \"enabled\": true,\n      \"time\": \"09:00\",\n      \"type\": \"daily_tip\"\n    }\n  }\n}"
+            },
+            "url": "{{baseUrl}}/user/profile",
+            "description": "Update profile (partial)"
+          }
+        },
+        {
+          "name": "Update Natal Chart (Manual)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sun\": 75.0,\n  \"moon\": 120.5,\n  \"ascendant\": 90.0,\n  \"mercury\": 60.0,\n  \"venus\": 45.0,\n  \"mars\": 180.0\n}"
+            },
+            "url": "{{baseUrl}}/user/natal-chart",
+            "description": "Manually set natal chart positions (ecliptic longitude degrees)"
+          }
+        },
+        {
+          "name": "Calculate Natal Chart",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/user/natal-chart/calculate",
+            "description": "Calculate natal chart from birth date/time/place. Requires birthLatitude & birthLongitude in profile for ascendant."
+          }
+        },
+        {
+          "name": "Export Data",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/user/export",
+            "description": "Export profile, natal chart, and daily messages"
+          }
+        },
+        {
+          "name": "Reset App",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/user/reset",
+            "description": "Clear daily messages, natal chart, preferences. Keeps account."
+          }
+        },
+        {
+          "name": "Delete Account",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/user/account",
+            "description": "Permanently delete account and all data"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Daily Message",
+      "item": [
+        {
+          "name": "Get Today's Message",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/daily-message",
+              "host": ["{{baseUrl}}"],
+              "path": ["daily-message"],
+              "query": [
+                { "key": "date", "value": "2026-01-30", "disabled": true, "description": "Optional: specific date" }
+              ]
+            },
+            "description": "Get daily message. Generates if not exists."
+          }
+        },
+        {
+          "name": "Generate Daily Message",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/daily-message/generate",
+              "host": ["{{baseUrl}}"],
+              "path": ["daily-message", "generate"],
+              "query": [
+                { "key": "date", "value": "2026-01-30", "disabled": true, "description": "Optional: specific date" }
+              ]
+            },
+            "description": "Manually trigger daily message generation"
+          }
+        },
+        {
+          "name": "Get Transits",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}" }] },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/daily-message/transits",
+              "host": ["{{baseUrl}}"],
+              "path": ["daily-message", "transits"],
+              "query": [
+                { "key": "date", "value": "2026-01-30", "disabled": true, "description": "Optional: specific date" }
+              ]
+            },
+            "description": "Get transit aspects for user's natal chart"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ephemeris",
+      "item": [
+        {
+          "name": "Get Positions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/ephemeris/positions",
+              "host": ["{{baseUrl}}"],
+              "path": ["ephemeris", "positions"],
+              "query": [
+                { "key": "date", "value": "2026-01-30", "disabled": true, "description": "Optional: YYYY-MM-DD" }
+              ]
+            },
+            "description": "Get planetary positions (no auth required)"
+          }
+        }
+      ]
+    }
+  ]
+}

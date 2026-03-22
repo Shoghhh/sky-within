@@ -1,0 +1,19 @@
+{
+  "name": "sky-within",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "app": "npm run start --workspace=apps/app",
+    "app:ios": "npm run ios --workspace=apps/app",
+    "app:android": "npm run android --workspace=apps/app",
+    "backend": "npm run start:dev --workspace=apps/backend",
+    "backend:build": "npm run build --workspace=apps/backend",
+    "dev": "concurrently \"npm run start --workspace=apps/app -- --port 8082\" \"npm run backend\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
