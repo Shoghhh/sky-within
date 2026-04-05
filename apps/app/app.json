@@ -1,7 +1,8 @@
 {
   "expo": {
     "plugins": [
-      "expo-dev-client"
+      "expo-dev-client",
+      "expo-secure-store"
     ],
     "name": "sky-within-app",
     "slug": "sky-within-app",
@@ -16,7 +17,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.shogh.sky-within-app"
+      "bundleIdentifier": "com.shogh.sky-within-app",
+      "appleTeamId": "V3328QUGU4"
     },
     "android": {
       "adaptiveIcon": {

@@ -7,6 +7,7 @@ import { AiLayerService } from '../ai-layer/ai-layer.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { RuleResult } from '../rule-engine/rule-engine.service';
 import type { TransitAspect } from '../transit-engine/transit-engine.service';
+import type { TransitExplainDto } from './dto/transit-explain.dto';
 
 @Injectable()
 export class DailyMessageService {
@@ -103,10 +104,14 @@ export class DailyMessageService {
     return dailyMessage;
   }
 
-  async getForUser(userId: string, date?: Date) {
+  async getForUser(userId: string, date?: Date, refresh = false) {
     const dateOnly = date
       ? new Date(date.toISOString().split('T')[0])
       : new Date(new Date().toISOString().split('T')[0]);
+
+    if (refresh) {
+      return this.generateForUser(userId, dateOnly);
+    }
 
     let msg = await this.prisma.dailyMessage.findUnique({
       where: {
@@ -146,6 +151,22 @@ export class DailyMessageService {
     };
 
     const d = date ?? new Date();
-    return this.transitEngine.getTransitsForUser(natalChart, d);
+    const transits = await this.transitEngine.getTransitsForUser(natalChart, d);
+    return this.ruleEngine.sortTransitsByPriority(transits);
+  }
+
+  /** AI paragraph for one strong transit; client falls back to template if unavailable. */
+  async explainTransit(_userId: string, dto: TransitExplainDto) {
+    const language = dto.language?.trim() || 'en';
+    return this.aiLayer.explainStrongTransit(
+      {
+        planet: dto.planet,
+        target: dto.target,
+        aspect: dto.aspect,
+        orb: dto.orb,
+        intensity: dto.intensity,
+      },
+      language,
+    );
   }
 }

@@ -7,6 +7,9 @@ import {
   Delete,
   UseGuards,
   Request,
+  Query,
+  NotFoundException,
+  StreamableFile,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -79,5 +82,30 @@ export class UserController {
   @Post('natal-chart/calculate')
   async calculateNatalChart(@Request() req: { user: { userId: string } }) {
     return this.userService.calculateAndSaveNatalChart(req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('natal-chart/detail')
+  async getNatalChartDetail(
+    @Request() req: { user: { userId: string } },
+    @Query('refresh') refreshRaw?: string,
+    /** Client app language (en | ru | hy); interpretations and cache use this when set. */
+    @Query('lang') lang?: string,
+  ) {
+    const refresh =
+      refreshRaw === '1' ||
+      refreshRaw === 'true' ||
+      refreshRaw === 'yes';
+    return this.userService.getNatalChartDetail(req.user.userId, { refresh, language: lang });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('natal-chart/chart-image')
+  async getNatalChartImage(@Request() req: { user: { userId: string } }) {
+    const result = await this.userService.getNatalChartImage(req.user.userId);
+    if (!result) throw new NotFoundException('Chart image not available');
+    return new StreamableFile(result.body, {
+      type: result.contentType,
+    });
   }
 }

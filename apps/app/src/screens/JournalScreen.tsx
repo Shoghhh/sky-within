@@ -108,10 +108,10 @@ export default function JournalScreen({ navigation }: { navigation: any }) {
         <ScrollView
           style={styles.container}
           contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
           }
-          showsVerticalScrollIndicator={false}
         >
           <View style={styles.headerRow}>
             <View style={styles.headerWithIcon}>
@@ -158,11 +158,11 @@ export default function JournalScreen({ navigation }: { navigation: any }) {
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
         }
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
       >
         <FadeInView>
           <View style={styles.headerWithIcon}>

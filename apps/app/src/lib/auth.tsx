@@ -22,7 +22,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     SecureStore.getItemAsync(TOKEN_KEY).then((stored) => {
       if (stored) {
         setToken(stored);
-        setAuthToken(stored);
+        setAuthToken(stored, 'restored from SecureStore');
       }
       setIsLoading(false);
     });
@@ -31,16 +31,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.auth.login(email, password);
     const t = res.access_token;
-    console.log('access_token', res.access_token )
     await SecureStore.setItemAsync(TOKEN_KEY, t);
     setToken(t);
-    setAuthToken(t);
+    setAuthToken(t, 'login');
   }, []);
 
   const logout = useCallback(async () => {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     setToken(null);
-    setAuthToken(null);
+    setAuthToken(null, 'logout');
   }, []);
 
   return (

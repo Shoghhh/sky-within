@@ -1,15 +1,29 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NatalChartCalculatorService } from '../natal-chart-calculator/natal-chart-calculator.service';
+import { NatalChartDetailService } from '../natal-chart-detail/natal-chart-detail.service';
+import { NatalPriorityService } from '../natal-chart-detail/natal-priority.service';
+import { AstroapiService } from '../astroapi/astroapi.service';
+import { NatalInterpretationService } from '../natal-interpretation/natal-interpretation.service';
+import { AiLayerService } from '../ai-layer/ai-layer.service';
 import * as bcrypt from 'bcrypt';
 import type { NatalChartDto } from './dto/natal-chart.dto';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
+import type { NatalChartDetail } from '../natal-chart-detail/natal-chart-detail.service';
+import type { NatalInterpretationPatch } from '../ai-layer/ai-layer.service';
+import { computeNatalChartInputHash } from './natal-interpretation-input-hash';
+import type { NatalChart, Prisma, User } from '@prisma/client';
 
 @Injectable()
 export class UserService {
   constructor(
     private prisma: PrismaService,
     private natalChartCalculator: NatalChartCalculatorService,
+    private natalChartDetail: NatalChartDetailService,
+    private astroapi: AstroapiService,
+    private natalInterpretation: NatalInterpretationService,
+    private aiLayer: AiLayerService,
+    private natalPriority: NatalPriorityService,
   ) {}
 
   async create(data: {
@@ -95,6 +109,211 @@ export class UserService {
       fcmToken: user.fcmToken,
       natalChart: user.natalChart,
     };
+  }
+
+  /**
+   * Natal detail: rule-based enrich is always computed; OpenAI runs only when OPENAI_API_KEY is set and
+   * (no cache, fingerprint changed, or client ?refresh=1). Cached rows store OpenAI prose in DB.
+   */
+  async getNatalChartDetail(
+    userId: string,
+    options?: { refresh?: boolean; language?: string },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { natalChart: true },
+    });
+
+    if (!user || !user.natalChart) {
+      throw new NotFoundException('User or natal chart not found');
+    }
+
+    const userWithChart = user as User & { natalChart: NatalChart };
+
+    const prefs = user.preferences as { language?: string } | null;
+    const allowed = new Set(['en', 'ru', 'hy']);
+    const q = options?.language?.trim().toLowerCase();
+    const lang =
+      q && allowed.has(q) ? q : (prefs?.language ?? 'en');
+
+    const lat = user.birthLatitude;
+    const lon = user.birthLongitude;
+
+    // --- Chart geometry: AstroAPI vs local (DB) fallback ---
+    // AstroAPI path (below): Placidus houses, full point set from api.astroapi.cloud, chartImageUrl set.
+    // Success signals in JSON: houseSystem "placidus", optional chartImageUrl, nodes/Lilith etc. if API returns them.
+    // If ASTROAPI_KEY is missing, lat/lon null, or calculateNatal returns null (see AstroapiService logs), we skip to buildDetail().
+    // Local fallback: equal houses from ascendant + longitudes in Prisma — houseSystem "equal", classic planets only from DB.
+
+    let detail: NatalChartDetail;
+
+    if (this.astroapi.isAvailable() && lat != null && lon != null) {
+      const tz = this.astroapi.getTimezone(lat, lon);
+      const birthDate = user.birthDate;
+      const [h, m] = (user.birthTime || '12:00').split(':').map(Number);
+      const dt = new Date(birthDate);
+      dt.setHours(h, m ?? 0, 0, 0);
+      const dateTime = dt.toISOString().slice(0, 16);
+
+      const astroRes = await this.astroapi.calculateNatal({
+        dateTime,
+        latitude: lat,
+        longitude: lon,
+        timezone: tz,
+        houseSystem: 'placidus',
+        language: 'en',
+        includeText: true,
+      });
+
+      if (astroRes) {
+        const birthDateStr = birthDate.toISOString().split('T')[0];
+        const chartImageUrl = '/user/natal-chart/chart-image';
+
+        detail = this.natalChartDetail.buildDetailFromAstroapi(
+          astroRes,
+          birthDateStr,
+          user.birthTime,
+          user.birthPlace,
+          lat,
+          lon,
+          tz,
+          chartImageUrl,
+        );
+      } else {
+        detail = this.buildLocalNatalChartDetail(userWithChart);
+      }
+    } else {
+      detail = this.buildLocalNatalChartDetail(userWithChart);
+    }
+
+    const structuredInterpretation = this.natalInterpretation.buildStructured(detail);
+    let enriched = this.natalInterpretation.enrichDetailWithInterpretations(
+      detail,
+      structuredInterpretation,
+    );
+
+    const chartInputHash = computeNatalChartInputHash(userWithChart, detail);
+    const useOpenAi = this.aiLayer.isOpenAiConfigured();
+
+    if (useOpenAi && !options?.refresh) {
+      const cache = await this.prisma.natalInterpretationCache.findUnique({
+        where: {
+          userId_chartInputHash_language: {
+            userId,
+            chartInputHash,
+            language: lang,
+          },
+        },
+      });
+      if (cache) {
+        const merged = this.aiLayer.applyNatalInterpretationPatch(
+          enriched,
+          cache.openAiPatch as unknown as NatalInterpretationPatch,
+        );
+        return {
+          ...merged,
+          structuredInterpretation,
+          personalityProse: cache.personalityProse,
+          layout: this.natalPriority.buildLayout(merged),
+        };
+      }
+    }
+
+    if (useOpenAi) {
+      enriched = await this.aiLayer.enrichNatalChartDetailWithOpenAI(enriched, lang);
+      const personalityProse = await this.aiLayer.formatNatalInterpretation(
+        enriched,
+        structuredInterpretation,
+        lang,
+      );
+      const openAiPatch = this.aiLayer.extractNatalInterpretationPatch(enriched);
+      await this.prisma.natalInterpretationCache.upsert({
+        where: {
+          userId_chartInputHash_language: {
+            userId,
+            chartInputHash,
+            language: lang,
+          },
+        },
+        create: {
+          userId,
+          chartInputHash,
+          language: lang,
+          personalityProse,
+          openAiPatch: openAiPatch as unknown as Prisma.InputJsonValue,
+        },
+        update: {
+          personalityProse,
+          openAiPatch: openAiPatch as unknown as Prisma.InputJsonValue,
+        },
+      });
+      return {
+        ...enriched,
+        structuredInterpretation,
+        personalityProse,
+        layout: this.natalPriority.buildLayout(enriched),
+      };
+    }
+
+    const personalityProse = await this.aiLayer.formatNatalInterpretation(
+      enriched,
+      structuredInterpretation,
+      lang,
+    );
+    return {
+      ...enriched,
+      structuredInterpretation,
+      personalityProse,
+      layout: this.natalPriority.buildLayout(enriched),
+    };
+  }
+
+  private buildLocalNatalChartDetail(user: User & { natalChart: NatalChart }): NatalChartDetail {
+    const chart = user.natalChart;
+    return this.natalChartDetail.buildDetail(
+      user.birthDate,
+      user.birthTime,
+      user.birthPlace,
+      user.birthLatitude,
+      user.birthLongitude,
+      {
+        sun: chart.sun,
+        moon: chart.moon,
+        ascendant: chart.ascendant,
+        mercury: chart.mercury,
+        venus: chart.venus,
+        mars: chart.mars,
+        jupiter: chart.jupiter,
+        saturn: chart.saturn,
+        uranus: chart.uranus,
+        neptune: chart.neptune,
+        pluto: chart.pluto,
+      },
+    );
+  }
+
+  async getNatalChartImage(userId: string): Promise<{ contentType: string; body: Buffer } | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user || !user.birthLatitude || !user.birthLongitude || !this.astroapi.isAvailable()) {
+      return null;
+    }
+    const tz = this.astroapi.getTimezone(user.birthLatitude, user.birthLongitude);
+    const [h, m] = (user.birthTime || '12:00').split(':').map(Number);
+    const dt = new Date(user.birthDate);
+    dt.setHours(h, m ?? 0, 0, 0);
+    const dateTime = dt.toISOString().slice(0, 16);
+    const url = this.astroapi.getChartImageUrl({
+      dateTime,
+      latitude: user.birthLatitude,
+      longitude: user.birthLongitude,
+      timezone: tz,
+      width: 800,
+      height: 800,
+    });
+    if (!url) return null;
+    return this.astroapi.fetchChartImage(url);
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {

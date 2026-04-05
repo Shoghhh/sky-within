@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
   StyleSheet,
-  RefreshControl,
   ScrollView,
+  RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
@@ -14,13 +15,38 @@ import { api } from '../lib/api';
 import type { DailyMessage, TransitAspect } from '../lib/api';
 import { usePreferences } from '../lib/preferences';
 import { useTranslation } from '../lib/i18n';
-import { spacing } from '../constants/theme';
+import { spacing, colors as themeColors } from '../constants/theme';
 import PlanetIcon from '../components/PlanetIcon';
 import FadeInView from '../components/FadeInView';
+import QuickTransitStrip from '../components/QuickTransitStrip';
 
 const { width } = Dimensions.get('window');
 
-export default function DashboardScreen({ navigation }: { navigation: any }) {
+function translateDashboardLayer(layer: string, tr: (k: string) => string): string {
+  const k = `dashboard.layer.${layer}`;
+  const v = tr(k);
+  return v === k ? layer : v;
+}
+
+function translateIntensityLevel(level: string, tr: (k: string) => string): string {
+  const k = `dashboard.intensityLevel.${level}`;
+  const v = tr(k);
+  return v === k ? level : v;
+}
+
+function translateAdviceType(value: string, tr: (k: string) => string): string {
+  const k = `dashboard.adviceType.${value}`;
+  const v = tr(k);
+  return v === k ? value : v;
+}
+
+function translateTone(value: string, tr: (k: string) => string): string {
+  const k = `dashboard.tone.${value}`;
+  const v = tr(k);
+  return v === k ? value : v;
+}
+
+export default function DashboardScreen({ navigation }: { navigation: { navigate: (name: string) => void } }) {
   const { colors, language } = usePreferences();
   const t = useTranslation(language);
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -30,10 +56,10 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchMessage = useCallback(async () => {
+  const fetchMessage = useCallback(async (refresh = false) => {
     try {
       const [msg, tr] = await Promise.all([
-        api.dailyMessage.get(),
+        api.dailyMessage.get(undefined, refresh ? { refresh: true } : undefined),
         api.dailyMessage.getTransits().catch(() => []),
       ]);
       setMessage(msg);
@@ -45,15 +71,24 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchMessage();
   }, [fetchMessage]);
 
+  const skipLanguageRefresh = useRef(true);
+  useEffect(() => {
+    if (skipLanguageRefresh.current) {
+      skipLanguageRefresh.current = false;
+      return;
+    }
+    void fetchMessage(true);
+  }, [language, fetchMessage]);
+
   const onRefresh = () => {
     setRefreshing(true);
-    fetchMessage();
+    void fetchMessage(true);
   };
 
   const generateNew = async () => {
@@ -61,6 +96,8 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
       setLoading(true);
       const data = await api.dailyMessage.generate();
       setMessage(data);
+      const tr = await api.dailyMessage.getTransits().catch(() => []);
+      setTransits(tr ?? []);
     } catch (e: unknown) {
       const err = e as { message?: string };
       Alert.alert(t('common.error'), err.message || t('dashboard.errorGenerate'));
@@ -77,6 +114,8 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
           <PlanetIcon name="Moon" size={36} animated />
         </View>
         <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 24 }} />
+        <Text style={styles.loadingTitle}>{t('dashboard.loading')}</Text>
+        <Text style={styles.loadingHint}>{t('dashboard.loadingHint')}</Text>
       </View>
     );
   }
@@ -88,17 +127,16 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.accent}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
         }
       >
         <FadeInView delay={0}>
           <View style={styles.header}>
             <PlanetIcon name="Sun" size={32} style={styles.headerIcon} />
-            <Text style={styles.title}>{t('dashboard.title')}</Text>
+            <View style={styles.headerTitleBlock}>
+              <Text style={styles.title}>{t('dashboard.title')}</Text>
+              <Text style={styles.screenSubtitle}>{t('dashboard.subtitle')}</Text>
+            </View>
             <PlanetIcon name="Moon" size={28} style={styles.headerIcon} />
           </View>
         </FadeInView>
@@ -108,58 +146,75 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
             <FadeInView delay={80}>
               <View style={styles.card}>
                 <View style={styles.cardGlow} />
+                <Text style={styles.messageKicker}>{t('dashboard.messageLabel')}</Text>
                 <Text style={styles.message}>{message.message}</Text>
+                {(() => {
+                  const rr = message.ruleResult;
+                  const hasDetails =
+                    !!rr &&
+                    !!(rr.focus || rr.opportunity || (rr.risk && rr.risk !== 'none'));
+                  return hasDetails ? (
+                    <View style={styles.messageDetails}>
+                      {rr?.focus ? (
+                        <View style={styles.detailBlock}>
+                          <Text style={styles.detailLabel}>{t('dashboard.detailFocus')}</Text>
+                          <Text style={styles.detailBody}>{rr.focus}</Text>
+                        </View>
+                      ) : null}
+                      {rr?.opportunity ? (
+                        <View style={styles.detailBlock}>
+                          <Text style={styles.detailLabel}>{t('dashboard.detailOpportunity')}</Text>
+                          <Text style={styles.detailBody}>{rr.opportunity}</Text>
+                        </View>
+                      ) : null}
+                      {rr?.risk && rr.risk !== 'none' ? (
+                        <View style={styles.detailBlock}>
+                          <Text style={styles.detailLabel}>{t('dashboard.detailRisk')}</Text>
+                          <Text style={styles.detailBody}>{rr.risk}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null;
+                })()}
+                <Text style={styles.messageMeta}>
+                  {translateAdviceType(message.adviceType, t)} · {translateTone(message.tone, t)}
+                </Text>
               </View>
             </FadeInView>
 
             <FadeInView delay={160}>
               <View style={styles.dominantEnergy}>
                 <Text style={styles.dominantLabel}>{t('dashboard.dominantEnergy')}</Text>
-                <Text style={styles.dominantValue}>{message.dominantLayer}</Text>
+                <Text style={styles.dominantValue}>
+                  {translateDashboardLayer(message.dominantLayer, t)}
+                </Text>
                 <View style={styles.intensityRow}>
                   <View style={[styles.intensityDot, { backgroundColor: colors.accent }]} />
                   <Text style={styles.intensityLabel}>
-                    {t('dashboard.intensity')}: <Text style={styles.intensityValue}>{message.intensity}</Text>
+                    {t('dashboard.intensity')}:{' '}
+                    <Text style={styles.intensityValue}>
+                      {translateIntensityLevel(message.intensity, t)}
+                    </Text>
                   </Text>
                 </View>
               </View>
             </FadeInView>
 
-            {transits.length > 0 && (
-              <FadeInView delay={240}>
-                <Text style={styles.transitSectionTitle}>{t('dashboard.quickTransits')}</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.transitScroll}
-                  contentContainerStyle={styles.transitScrollContent}
+            {transits.length > 0 ? (
+              <FadeInView delay={200}>
+                <QuickTransitStrip transits={transits} maxItems={6} />
+                <TouchableOpacity
+                  style={styles.seeAllButton}
+                  onPress={() => navigation.navigate('Transits' as never)}
+                  activeOpacity={0.85}
                 >
-                  {transits.slice(0, 5).map((t, i) => (
-                    <View key={i} style={styles.transitCard}>
-                      <View style={styles.transitCardHeader}>
-                        <PlanetIcon name={t.planet} size={18} animated={false} />
-                        <PlanetIcon name={t.target} size={16} animated={false} />
-                      </View>
-                      <Text style={styles.transitText}>
-                        {t.planet} → {t.target}
-                      </Text>
-                      <Text style={styles.transitAspect}>{t.aspect}</Text>
-                    </View>
-                  ))}
-                </ScrollView>
+                  <Text style={styles.seeAllButtonText}>{t('dashboard.seeAllTransits')}</Text>
+                  <Ionicons name="chevron-forward" size={20} color={colors.accent} />
+                </TouchableOpacity>
               </FadeInView>
-            )}
+            ) : null}
 
             <FadeInView delay={320}>
-              <TouchableOpacity
-                style={[styles.primaryButton, styles.buttonGradient]}
-                onPress={() => navigation.navigate('Transits')}
-                activeOpacity={0.8}
-              >
-                <PlanetIcon name="Sun" size={20} animated={false} />
-                <Text style={styles.primaryButtonText}>{t('dashboard.seeAllTransits')}</Text>
-              </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.secondaryButton}
                 onPress={() => navigation.navigate('Journal')}
@@ -169,11 +224,7 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
                 <Text style={styles.secondaryButtonText}>{t('dashboard.reflect')}</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.linkButton}
-                onPress={generateNew}
-                disabled={loading}
-              >
+              <TouchableOpacity style={styles.linkButton} onPress={generateNew} disabled={loading}>
                 <Text style={styles.linkText}>{t('dashboard.regenerate')}</Text>
               </TouchableOpacity>
             </FadeInView>
@@ -182,9 +233,7 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
           <FadeInView>
             <View style={styles.emptyCard}>
               <PlanetIcon name="Moon" size={48} />
-              <Text style={styles.empty}>
-                {t('dashboard.empty')}
-              </Text>
+              <Text style={styles.empty}>{t('dashboard.empty')}</Text>
             </View>
           </FadeInView>
         )}
@@ -193,204 +242,229 @@ export default function DashboardScreen({ navigation }: { navigation: any }) {
   );
 }
 
-function createStyles(c: typeof import('../constants/theme').colors.light) {
+type ThemeColors = typeof themeColors.light;
+
+function createStyles(c: ThemeColors) {
   return StyleSheet.create({
-  gradientBg: {
-    flex: 1,
-    backgroundColor: c.background,
-  },
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: spacing.lg,
-    paddingBottom: spacing.xl * 3,
-  },
-  centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingOrbs: {
-    flexDirection: 'row',
-    gap: 24,
-    alignItems: 'center',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  headerIcon: {
-    opacity: 0.9,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: c.primary,
-    letterSpacing: 0.5,
-  },
-  card: {
-    backgroundColor: (c as any).cardTint ?? 'rgba(99, 102, 241, 0.12)',
-    borderRadius: 20,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-    borderWidth: 1,
-    borderColor: (c as any).cardBorder ?? c.border,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  cardGlow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 2,
-    backgroundColor: 'rgba(129, 140, 248, 0.4)',
-  },
-  message: {
-    fontSize: 18,
-    lineHeight: 28,
-    color: c.text,
-  },
-  dominantEnergy: {
-    backgroundColor: (c as any).cardBg ?? c.surface,
-    padding: spacing.lg,
-    borderRadius: 16,
-    marginBottom: spacing.lg,
-    borderWidth: 1,
-    borderColor: (c as any).cardBorder ?? c.border,
-  },
-  dominantLabel: {
-    fontSize: 12,
-    color: c.textSecondary,
-    marginBottom: spacing.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  dominantValue: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: c.accentLight,
-  },
-  intensityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing.sm,
-    gap: spacing.sm,
-  },
-  intensityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  intensityLabel: {
-    fontSize: 14,
-    color: c.textSecondary,
-  },
-  intensityValue: {
-    fontWeight: '600',
-    color: c.primary,
-  },
-  transitSectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: c.textSecondary,
-    marginBottom: spacing.sm,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  transitScroll: {
-    marginHorizontal: -spacing.lg,
-    marginBottom: spacing.lg,
-  },
-  transitScrollContent: {
-    paddingHorizontal: spacing.lg,
-  },
-  transitCard: {
-    backgroundColor: (c as any).cardTint ?? 'rgba(99, 102, 241, 0.15)',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 14,
-    minWidth: 120,
-    marginRight: spacing.sm,
-    borderWidth: 1,
-    borderColor: (c as any).cardBorder ?? c.border,
-  },
-  transitCardHeader: {
-    flexDirection: 'row',
-    gap: 4,
-    marginBottom: 4,
-  },
-  transitText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: c.primary,
-  },
-  transitAspect: {
-    fontSize: 11,
-    color: c.textSecondary,
-    marginTop: 2,
-  },
-  primaryButton: {
-    borderRadius: 16,
-    marginBottom: spacing.sm,
-    overflow: 'hidden',
-    shadowColor: c.accentGlow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  buttonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.md,
-    gap: spacing.sm,
-    backgroundColor: c.gradientStart,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: (c as any).secondaryButtonBg ?? c.surface,
-    padding: spacing.md,
-    borderRadius: 16,
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: (c as any).secondaryButtonBorder ?? c.border,
-  },
-  secondaryButtonText: {
-    color: c.accentLight,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  linkButton: {
-    alignItems: 'center',
-    padding: spacing.sm,
-  },
-  linkText: {
-    color: c.textSecondary,
-    fontSize: 14,
-  },
-  emptyCard: {
-    alignItems: 'center',
-    padding: spacing.xl,
-    marginTop: spacing.xl,
-  },
-  empty: {
-    fontSize: 16,
-    color: c.textSecondary,
-    textAlign: 'center',
-    marginTop: spacing.lg,
-  },
-});
+    gradientBg: {
+      flex: 1,
+      backgroundColor: c.background,
+    },
+    container: {
+      flex: 1,
+    },
+    content: {
+      padding: spacing.lg,
+      paddingBottom: spacing.xl * 3,
+      maxWidth: Math.min(width, 560),
+      width: '100%',
+      alignSelf: 'center',
+    },
+    centered: {
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    loadingOrbs: {
+      flexDirection: 'row',
+      gap: 24,
+      alignItems: 'center',
+    },
+    loadingTitle: {
+      marginTop: 20,
+      fontSize: 17,
+      fontWeight: '600',
+      color: c.primary,
+      textAlign: 'center',
+    },
+    loadingHint: {
+      marginTop: 10,
+      fontSize: 14,
+      color: c.textSecondary,
+      textAlign: 'center',
+      lineHeight: 20,
+      maxWidth: 280,
+      paddingHorizontal: spacing.md,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    headerTitleBlock: {
+      alignItems: 'center',
+      flex: 1,
+    },
+    headerIcon: {
+      opacity: 0.9,
+    },
+    title: {
+      fontSize: 26,
+      fontWeight: '700',
+      color: c.primary,
+      letterSpacing: 0.5,
+      textAlign: 'center',
+    },
+    screenSubtitle: {
+      fontSize: 14,
+      color: c.textSecondary,
+      marginTop: 6,
+      textAlign: 'center',
+      lineHeight: 20,
+    },
+    card: {
+      backgroundColor: c.cardTint,
+      borderRadius: 20,
+      padding: spacing.lg,
+      marginBottom: spacing.lg,
+      borderWidth: 1,
+      borderColor: c.cardBorder,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    cardGlow: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 2,
+      backgroundColor: 'rgba(129, 140, 248, 0.4)',
+    },
+    messageKicker: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: c.accent,
+      textTransform: 'uppercase',
+      letterSpacing: 1.2,
+      marginBottom: spacing.sm,
+    },
+    message: {
+      fontSize: 17,
+      lineHeight: 27,
+      color: c.text,
+      fontWeight: '500',
+    },
+    messageDetails: {
+      marginTop: spacing.md,
+      paddingTop: spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: c.border,
+      gap: spacing.md,
+    },
+    detailBlock: {
+      gap: spacing.xs,
+    },
+    detailLabel: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: c.accent,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+    },
+    detailBody: {
+      fontSize: 15,
+      lineHeight: 22,
+      color: c.textSecondary,
+    },
+    messageMeta: {
+      marginTop: spacing.md,
+      fontSize: 13,
+      color: c.textSecondary,
+      fontStyle: 'italic',
+    },
+    dominantEnergy: {
+      backgroundColor: c.cardBg,
+      padding: spacing.lg,
+      borderRadius: 16,
+      marginBottom: spacing.lg,
+      borderWidth: 1,
+      borderColor: c.cardBorder,
+    },
+    dominantLabel: {
+      fontSize: 12,
+      color: c.textSecondary,
+      marginBottom: spacing.xs,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    dominantValue: {
+      fontSize: 22,
+      fontWeight: '700',
+      color: c.accentLight,
+    },
+    intensityRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: spacing.sm,
+      gap: spacing.sm,
+    },
+    intensityDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    intensityLabel: {
+      fontSize: 14,
+      color: c.textSecondary,
+    },
+    intensityValue: {
+      fontWeight: '600',
+      color: c.primary,
+    },
+    seeAllButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.lg,
+      marginBottom: spacing.lg,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: c.cardBorder,
+      backgroundColor: c.surface,
+    },
+    seeAllButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: c.accent,
+    },
+    secondaryButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      backgroundColor: c.secondaryButtonBg,
+      padding: spacing.md,
+      borderRadius: 16,
+      marginBottom: spacing.sm,
+      borderWidth: 1,
+      borderColor: c.secondaryButtonBorder,
+    },
+    secondaryButtonText: {
+      color: c.accentLight,
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    linkButton: {
+      alignItems: 'center',
+      padding: spacing.sm,
+    },
+    linkText: {
+      color: c.textSecondary,
+      fontSize: 14,
+    },
+    emptyCard: {
+      alignItems: 'center',
+      padding: spacing.xl,
+      marginTop: spacing.xl,
+    },
+    empty: {
+      fontSize: 16,
+      color: c.textSecondary,
+      textAlign: 'center',
+      marginTop: spacing.lg,
+    },
+  });
 }

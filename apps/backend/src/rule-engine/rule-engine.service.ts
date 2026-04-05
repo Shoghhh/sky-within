@@ -1,11 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import type { TransitAspect } from '../transit-engine/transit-engine.service';
 
+export interface ContributingTransit {
+  planet: string;
+  target: string;
+  aspect: string;
+  orb: number;
+  /** Present for newly computed results; omit in older stored JSON. */
+  intensity?: 'low' | 'medium' | 'high';
+}
+
 export interface RuleResult {
   dominantLayer: string;
   intensity: string;
   adviceType: string;
   tone: string;
+  focus: string;
+  risk: string;
+  opportunity: string;
+  contributingTransits: ContributingTransit[];
 }
 
 const PLANET_LAYERS: Record<string, string> = {
@@ -41,6 +54,10 @@ export class RuleEngineService {
         intensity: 'low',
         adviceType: 'reflection',
         tone: 'calm',
+        focus: 'general wellbeing',
+        risk: 'none',
+        opportunity: 'quiet reflection',
+        contributingTransits: [],
       };
     }
 
@@ -77,6 +94,7 @@ export class RuleEngineService {
     const hasConjunction = transits.some((t) => t.aspect === 'conjunction');
     const hasOpposition = transits.some((t) => t.aspect === 'opposition');
     const hasTrine = transits.some((t) => t.aspect === 'trine');
+    const hasSextile = transits.some((t) => t.aspect === 'sextile');
 
     let adviceType = 'reflection';
     if (hasSquare || hasOpposition) adviceType = 'caution';
@@ -89,11 +107,73 @@ export class RuleEngineService {
       tone = 'nurturing';
     else if (dominantLayer === 'mental') tone = 'thoughtful';
 
+    const FOCUS_BY_LAYER: Record<string, string> = {
+      emotional: 'inner emotional awareness',
+      identity: 'self-expression and core identity',
+      love: 'relationships and connection',
+      energy: 'action and motivation',
+      mental: 'communication and thinking',
+      expansion: 'growth and opportunity',
+      structure: 'discipline and responsibility',
+      change: 'innovation and freedom',
+      spiritual: 'intuition and transcendence',
+      transformation: 'deep change and renewal',
+      general: 'overall balance',
+    };
+    const focus = FOCUS_BY_LAYER[dominantLayer] ?? 'general wellbeing';
+
+    let risk = 'none';
+    if (hasSquare || hasOpposition) {
+      risk =
+        dominantLayer === 'emotional'
+          ? 'overreacting'
+          : dominantLayer === 'energy'
+            ? 'impulsiveness'
+            : 'tension or conflict';
+    }
+
+    let opportunity = 'self-reflection';
+    if (hasTrine) opportunity = 'natural flow and ease';
+    else if (hasConjunction) opportunity = 'intensified focus and alignment';
+    else if (hasSextile) opportunity = 'cooperative energy';
+
+    const contributingTransits: ContributingTransit[] = transits
+      .map((t) => ({
+        transit: t,
+        score: (ASPECT_WEIGHTS[t.aspect] ?? 1) * (INTENSITY_SCORES[t.intensity] ?? 1) * (10 - t.orb),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map(({ transit }) => ({
+        planet: transit.planet,
+        target: transit.target,
+        aspect: transit.aspect,
+        orb: transit.orb,
+        intensity: transit.intensity,
+      }));
+
     return {
       dominantLayer,
       intensity,
       adviceType,
       tone,
+      focus,
+      risk,
+      opportunity,
+      contributingTransits,
     };
+  }
+
+  /** Same scoring as top contributing transits; higher = stronger felt influence. */
+  transitPriorityScore(t: TransitAspect): number {
+    const weight = ASPECT_WEIGHTS[t.aspect] ?? 1;
+    const intScore = INTENSITY_SCORES[t.intensity] ?? 1;
+    return weight * intScore * (10 - t.orb);
+  }
+
+  sortTransitsByPriority(transits: TransitAspect[]): TransitAspect[] {
+    return [...transits].sort(
+      (a, b) => this.transitPriorityScore(b) - this.transitPriorityScore(a),
+    );
   }
 }

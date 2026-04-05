@@ -10,6 +10,9 @@ interface PreferencesContextType {
   language: string;
   colors: typeof colors.light;
   refreshPreferences: () => Promise<void>;
+  /** Full-screen overlay while app content reloads after a language change from Profile. */
+  languageContentLoading: boolean;
+  setLanguageContentLoading: (loading: boolean) => void;
 }
 
 const PreferencesContext = createContext<PreferencesContextType | null>(null);
@@ -18,6 +21,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   const { isAuthenticated } = useAuth();
   const [theme, setTheme] = useState<ThemeMode>('light');
   const [language, setLanguage] = useState('en');
+  const [languageContentLoading, setLanguageContentLoading] = useState(false);
 
   const refreshPreferences = useCallback(async () => {
     try {
@@ -51,6 +55,8 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
         language,
         colors: palette,
         refreshPreferences,
+        languageContentLoading,
+        setLanguageContentLoading,
       }}
     >
       {children}

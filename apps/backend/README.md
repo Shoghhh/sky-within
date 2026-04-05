@@ -9,6 +9,7 @@ Backend for **Sky Within**, an astrology daily advice app that provides personal
 - **Ephemeris:** astronomy-engine (geocentric ecliptic positions)
 - **AI:** OpenAI API (GPT-4o-mini) for natural language generation
 - **Notifications:** Firebase Cloud Messaging (FCM)
+- **AstroAPI:** (Optional) Professional natal chart images and interpretations from astroapi.cloud
 
 ## Architecture
 
@@ -52,6 +53,7 @@ src/
 - PostgreSQL
 - (Optional) OpenAI API key
 - (Optional) Firebase project for FCM
+- (Optional) AstroAPI key (for natal chart images and interpretations)
 
 ### 2. Install Dependencies
 
@@ -75,6 +77,7 @@ cp .env.example .env
 - `OPENAI_API_KEY` – For AI-generated messages (falls back to template if missing)
 - `OPENAI_MODEL` – Model name (default: gpt-4o-mini)
 - `GOOGLE_APPLICATION_CREDENTIALS` – Path to Firebase service account JSON for FCM
+- `ASTROAPI_KEY` – AstroAPI key for natal chart images and professional interpretations (astroapi.cloud)
 
 ### 4. Database
 
@@ -105,6 +108,8 @@ API base: `http://localhost:3000/api`
 | PATCH | `/api/user/profile` | Update profile (JWT) |
 | PATCH | `/api/user/natal-chart` | Update natal chart manually (JWT) |
 | POST | `/api/user/natal-chart/calculate` | Calculate natal chart from birth data (JWT) |
+| GET | `/api/user/natal-chart/detail` | Full natal chart detail: elements, dignities, aspects (JWT) |
+| GET | `/api/user/natal-chart/chart-image` | Natal chart wheel image (AstroAPI, JWT) |
 | GET | `/api/user/export` | Export all user data (JWT) |
 | POST | `/api/user/reset` | Reset app (clear messages, chart, prefs) (JWT) |
 | DELETE | `/api/user/account` | Delete account (JWT) |

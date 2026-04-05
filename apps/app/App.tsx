@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Pressable, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -13,8 +13,11 @@ import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
-import TransitsScreen from './src/screens/TransitsScreen';
 import JournalScreen from './src/screens/JournalScreen';
+import NatalChartScreen from './src/screens/NatalChartScreen';
+import AstrologyBasicsScreen from './src/screens/AstrologyBasicsScreen';
+import TransitsScreen from './src/screens/TransitsScreen';
+import LanguageLoadingOverlay from './src/components/LanguageLoadingOverlay';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -69,12 +72,12 @@ function MainTabs() {
         }}
       />
       <Tab.Screen
-        name="Transits"
-        component={TransitsScreen}
+        name="NatalChart"
+        component={NatalChartScreen}
         options={{
-          tabBarLabel: t('tab.transits'),
+          tabBarLabel: t('tab.natalChart'),
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="telescope" size={size} color={color} />
+            <Ionicons name="pie-chart" size={size} color={color} />
           ),
         }}
       />
@@ -106,15 +109,52 @@ function MainStack() {
   const { colors } = usePreferences();
   return (
     <Stack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.surface },
-        headerTintColor: colors.primary,
-      }}
+      screenOptions={({ navigation }) => ({
+        headerStyle: {
+          backgroundColor: colors.background,
+          borderBottomWidth: 1,
+          borderBottomColor: 'rgba(129, 140, 248, 0.12)',
+        },
+        headerTitleStyle: { fontWeight: '700', fontSize: 18, color: colors.primary },
+        headerShadowVisible: false,
+        headerBackTitleVisible: false,
+        headerTintColor: colors.accent,
+        headerLeft: () =>
+          navigation.canGoBack() ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              onPress={() => navigation.goBack()}
+              hitSlop={12}
+              style={({ pressed }) => ({
+                marginLeft: Platform.OS === 'ios' ? 4 : 0,
+                marginRight: 4,
+                borderRadius: 22,
+                // backgroundColor: pressed ? `${colors.accent}26` : `${colors.accent}14`,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+              })}
+            >
+              <Ionicons name="chevron-back" size={24} color={colors.accent} />
+            </Pressable>
+          ) : null,
+      })}
     >
       <Stack.Screen
         name="MainTabs"
         component={MainTabs}
         options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="AstrologyBasics"
+        component={AstrologyBasicsScreen}
+        options={{ headerShown: true }}
+      />
+      <Stack.Screen
+        name="Transits"
+        component={TransitsScreen}
+        options={{ headerShown: true }}
       />
     </Stack.Navigator>
   );
@@ -153,6 +193,7 @@ export default function App() {
           <ThemeAwareStatusBar />
           <RootNavigator />
         </NavigationContainer>
+        <LanguageLoadingOverlay />
       </PreferencesProvider>
     </AuthProvider>
   );

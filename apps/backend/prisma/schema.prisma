@@ -1,6 +1,3 @@
-// Sky Within - Astrology Daily Advice App
-// Prisma Schema for PostgreSQL
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,33 +8,44 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  email       String   @unique
-  password    String
-  name        String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id             String         @id @default(cuid())
+  email          String         @unique
+  password       String
+  name           String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
   birthDate      DateTime
-  birthTime      String   // "14:30" format
+  birthTime      String
   birthPlace     String
-  birthLatitude  Float?   // For natal chart calculation
-  birthLongitude Float?   // For natal chart calculation
-
-  natalChart  NatalChart?
-  preferences Json?    // { theme, language, notifications }
-  fcmToken    String?  // For push notifications
-
-  dailyMessages DailyMessage[]
+  preferences    Json?
+  fcmToken       String?
+  birthLatitude  Float?
+  birthLongitude Float?
+  authToken      AuthToken?
+  dailyMessages  DailyMessage[]
   journalEntries JournalEntry[]
-  authToken     AuthToken?
+  natalChart                 NatalChart?
+  natalInterpretationCaches NatalInterpretationCache[]
+}
+
+/** Per-language OpenAI natal text; chartInputHash is geometry-only (language excluded). */
+model NatalInterpretationCache {
+  id               String   @id @default(cuid())
+  userId           String
+  chartInputHash   String
+  language         String
+  personalityProse String   @db.Text
+  openAiPatch      Json
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chartInputHash, language])
 }
 
 model NatalChart {
   id        String   @id @default(cuid())
   userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   sun       Float
   moon      Float
   ascendant Float
@@ -49,28 +57,25 @@ model NatalChart {
   uranus    Float?
   neptune   Float?
   pluto     Float?
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model DailyMessage {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date        DateTime @db.Date
-
-  message     String
+  id            String    @id @default(cuid())
+  userId        String
+  date          DateTime  @db.Date
+  message       String
   dominantLayer String
-  intensity   String
-  adviceType  String
-  tone        String
-
-  ruleResult  Json?    // Full RuleResult for reference
-  transitData Json?    // Transit array for reference
-
-  createdAt   DateTime @default(now())
-  sentAt      DateTime? // When notification was sent
+  intensity     String
+  adviceType    String
+  tone          String
+  ruleResult    Json?
+  transitData   Json?
+  createdAt     DateTime  @default(now())
+  sentAt        DateTime?
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
   @@index([userId])
@@ -80,30 +85,28 @@ model DailyMessage {
 model AuthToken {
   id        String   @id @default(cuid())
   userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   token     String
   expiresAt DateTime
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model EphemerisCache {
   id        String   @id @default(cuid())
-  date      DateTime @db.Date @unique
-  positions Json     // { sun, moon, mars, venus, ... }
+  date      DateTime @unique @db.Date
+  positions Json
   createdAt DateTime @default(now())
 }
 
 model JournalEntry {
   id        String   @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   date      DateTime @db.Date
-
-  text      String   @db.Text
-  mood      String?  // happy, calm, reflective, stressed, sad
-
+  text      String
+  mood      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
   @@index([userId])

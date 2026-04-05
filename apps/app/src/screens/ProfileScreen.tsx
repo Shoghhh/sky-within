@@ -23,15 +23,15 @@ import { useTranslation } from '../lib/i18n';
 import { spacing } from '../constants/theme';
 import PlanetIcon from '../components/PlanetIcon';
 import FadeInView from '../components/FadeInView';
+import { translatePlanet, translateSign } from '../lib/astro-labels';
+import { degreesInSign, longitudeToSignKey } from '../lib/zodiac';
+import { Ionicons } from '@expo/vector-icons';
 import DatePicker from 'react-native-date-picker';
 import { searchPlaces, type GeocodeResult } from '../lib/geocode';
 
 const THEMES = ['light', 'dark'] as const;
 const LANGUAGES = [
   { value: 'en', label: 'English' },
-  { value: 'es', label: 'Español' },
-  { value: 'fr', label: 'Français' },
-  { value: 'de', label: 'Deutsch' },
   { value: 'ru', label: 'Русский' },
   { value: 'hy', label: 'Հայերեն' },
 ];
@@ -65,7 +65,7 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
   const [showLanguageModal, setShowLanguageModal] = useState(false);
 
   const { logout } = useAuth();
-  const { colors, language, refreshPreferences } = usePreferences();
+  const { colors, language, refreshPreferences, setLanguageContentLoading } = usePreferences();
   const tr = useTranslation(language);
 
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -200,8 +200,13 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
   };
 
   const handleSavePreferences = async () => {
+    const prevLang = profile?.preferences?.language ?? 'en';
+    const languageChanged = editLanguage !== prevLang;
     try {
       setSaving(true);
+      if (languageChanged) {
+        setLanguageContentLoading(true);
+      }
       const notif = profile?.preferences?.notifications ?? {
         enabled: false,
         time: '08:00',
@@ -221,7 +226,13 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
       await fetchProfile();
       await refreshPreferences();
       setEditingPreferences(false);
+      if (languageChanged) {
+        setTimeout(() => setLanguageContentLoading(false), 2200);
+      }
     } catch (e: any) {
+      if (languageChanged) {
+        setLanguageContentLoading(false);
+      }
       Alert.alert(tr('common.error'), e.message || tr('profile.errorUpdate'));
     } finally {
       setSaving(false);
@@ -416,34 +427,54 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
       <FadeInView delay={80}>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{tr('profile.sectionChart')}</Text>
-        {hasNatalChart ? (
-          <View style={styles.chartTable}>
-            {(
-              [
-                { planet: 'Sun', deg: profile.natalChart!.sun },
-                { planet: 'Moon', deg: profile.natalChart!.moon },
-                { planet: 'Ascendant', deg: profile.natalChart!.ascendant },
-                profile.natalChart!.mercury != null && { planet: 'Mercury', deg: profile.natalChart!.mercury },
-                profile.natalChart!.venus != null && { planet: 'Venus', deg: profile.natalChart!.venus },
-                profile.natalChart!.mars != null && { planet: 'Mars', deg: profile.natalChart!.mars },
-                profile.natalChart!.jupiter != null && { planet: 'Jupiter', deg: profile.natalChart!.jupiter },
-                profile.natalChart!.saturn != null && { planet: 'Saturn', deg: profile.natalChart!.saturn },
-                profile.natalChart!.uranus != null && { planet: 'Uranus', deg: profile.natalChart!.uranus },
-                profile.natalChart!.neptune != null && { planet: 'Neptune', deg: profile.natalChart!.neptune },
-                profile.natalChart!.pluto != null && { planet: 'Pluto', deg: profile.natalChart!.pluto },
-              ].filter((p): p is { planet: string; deg: number } => Boolean(p))
-            ).map((p) => (
-                <View key={p.planet} style={styles.chartRow}>
-                  <View style={styles.chartPlanetCell}>
-                    <PlanetIcon name={p.planet} size={20} animated={false} />
-                    <Text style={styles.chartPlanet}>{p.planet}</Text>
+        {hasNatalChart && profile.natalChart ? (
+          <>
+            <Text style={styles.chartHint}>{tr('profile.chartSummaryHint')}</Text>
+            <View style={styles.bigThreeRow}>
+              {(
+                [
+                  { planet: 'Sun' as const, lon: profile.natalChart.sun },
+                  { planet: 'Moon' as const, lon: profile.natalChart.moon },
+                  { planet: 'Ascendant' as const, lon: profile.natalChart.ascendant },
+                ] as const
+              ).map(({ planet, lon }) => {
+                const signKey = longitudeToSignKey(lon);
+                const d = degreesInSign(lon);
+                return (
+                  <View key={planet} style={styles.bigThreeCard}>
+                    <PlanetIcon name={planet} size={22} animated={false} />
+                    <Text style={styles.bigThreePlanet} numberOfLines={1}>
+                      {translatePlanet(planet, tr)}
+                    </Text>
+                    <Text style={styles.bigThreeSign} numberOfLines={1}>
+                      {translateSign(signKey, tr)}
+                    </Text>
+                    <Text style={styles.bigThreeDeg}>{d.toFixed(1)}°</Text>
                   </View>
-                  <Text style={styles.chartDegree}>{p.deg.toFixed(1)}°</Text>
-                </View>
-              ))}
-          </View>
+                );
+              })}
+            </View>
+            <TouchableOpacity
+              style={styles.openChartButton}
+              onPress={() => navigation.navigate('NatalChart')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.openChartButtonText}>{tr('profile.openFullChart')}</Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.accent} />
+            </TouchableOpacity>
+          </>
         ) : (
-          <Text style={styles.hint}>{tr('profile.noChart')}</Text>
+          <>
+            <Text style={styles.hint}>{tr('profile.noChart')}</Text>
+            <TouchableOpacity
+              style={[styles.openChartButton, { marginTop: spacing.sm }]}
+              onPress={() => navigation.navigate('NatalChart')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.openChartButtonText}>{tr('profile.openFullChart')}</Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.accent} />
+            </TouchableOpacity>
+          </>
         )}
       </View>
       </FadeInView>
@@ -746,35 +777,62 @@ function createStyles(c: typeof import('../constants/theme').colors.light) {
       color: c.text,
       marginBottom: spacing.xs,
     },
-  chartTable: {
-    backgroundColor: (c as any).cardBg ?? c.surface,
-      borderRadius: 12,
-      marginBottom: spacing.sm,
-      overflow: 'hidden',
+    chartHint: {
+      fontSize: 14,
+      color: c.textSecondary,
+      lineHeight: 20,
+      marginBottom: spacing.md,
+    },
+    bigThreeRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    bigThreeCard: {
+      flex: 1,
+      minWidth: 0,
+      backgroundColor: (c as { cardBg?: string }).cardBg ?? c.surface,
+      borderRadius: 14,
       borderWidth: 1,
-    borderColor: (c as any).cardBorder ?? c.border,
-  },
-  chartRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
+      borderColor: (c as { cardBorder?: string }).cardBorder ?? c.border,
       padding: spacing.sm,
-      paddingHorizontal: spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: 'rgba(51, 65, 85, 0.5)',
-    },
-    chartPlanetCell: {
-      flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
     },
-    chartPlanet: {
-      fontSize: 14,
-      color: c.text,
+    bigThreePlanet: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: c.accent,
+      marginTop: 4,
+      textAlign: 'center',
     },
-    chartDegree: {
-      fontSize: 14,
+    bigThreeSign: {
+      fontSize: 13,
       fontWeight: '600',
       color: c.primary,
+      marginTop: 2,
+      textAlign: 'center',
+    },
+    bigThreeDeg: {
+      fontSize: 12,
+      color: c.textSecondary,
+      marginTop: 2,
+    },
+    openChartButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.lg,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: (c as { cardBorder?: string }).cardBorder ?? c.border,
+      backgroundColor: c.surface,
+    },
+    openChartButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: c.accent,
     },
     hint: {
       fontSize: 14,
